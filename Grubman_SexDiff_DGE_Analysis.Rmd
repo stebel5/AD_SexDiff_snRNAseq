@@ -1,0 +1,146 @@
+---
+title: "Grubman et al sex stratified differential gene expression analysis"
+author: "Stella Belonwu"
+date: "03/23/2021"
+output: html_document
+---
+
+Goal: Use Limma Voom with TMM_wsp normalization for DE Analysis in the Grubman dataset\
+Design formula will include batch & sex where possible\
+Cutoffs are FDR < 0.05, L2FC > 0.25\
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Input packages\
+```{r}
+library(readxl)
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+library(limma)
+library(edgeR)
+library(Seurat)
+```
+
+Input Seurat normalized object\
+```{r}
+setwd("/your directory")
+grub<- readRDS("grub_corrected_full_nohybrid.rds")
+```
+
+Run separately for male and female, include ApoE and batch as covariates where possible\
+```{r}
+str(grub@meta.data)
+
+#Create variable of interest, make sure assay is RNA, and design variables are factors
+grub$diag_cell_sex<- paste0(grub$Diagnosis,"_", grub$cell_type,"_",grub$Sex)
+Idents(grub) <- "diag_cell_sex"
+table(Idents(grub))
+DefaultAssay(grub)<- "RNA"
+grub$diag_cell_sex<- as.factor(grub$diag_cell_sex)
+grub$Batch<- as.factor(grub$Batch)
+grub$ApoE<- as.factor(grub$ApoE)
+
+#Create design
+design<- model.matrix(~0 + diag_cell_sex + Batch + ApoE, data = grub@meta.data)
+colnames(design) <- gsub("diag_cell_sex", "", colnames(design))
+colnames(design) <- gsub("Batch", "", colnames(design))
+colnames(design)
+
+#Filter and normalize counts
+dge <-  as.matrix(GetAssayData(grub, slot="counts")) 
+dge <- DGEList(counts= dge)
+keep <- filterByExpr(dge, design)
+summary(keep) #false 10617, true 233
+dge <- dge[keep,keep.lib.sizes=FALSE]
+dge <- calcNormFactors(dge, method = "TMMwsp")
+
+#Run Voom and make contrasts
+vm<- voom(dge, design, plot = TRUE)
+fit <- lmFit(vm, design)
+head(coef(fit))
+
+#limma warning: coefficients not estimable 
+#https://support.bioconductor.org/p/111119/
+#https://github.com/shenorrLab/bseqsc/issues/3
+identical(design[,"AD3_AD4"],rowSums(design[,c("AD_ast_Female", "AD_neu_Female", "AD_mic_Female","AD_opc_Female", "AD_end_Female", "AD_oli_Female")])) #TRUE
+identical(design[,"Ct1_Ct2"],rowSums(design[,c("Control_ast_Female", "Control_neu_Female", "Control_mic_Female","Control_opc_Female", "Control_end_Female", "Control_oli_Female")])) #TRUE
+#this means that batch and apoe are collinear with the intercept of the model; need to simplify/remove one of them to make the model estimable
+```
+
+Simplify and run model
+```{r}
+#attempt 1: still not estimable
+grub$batchapoe<- paste0(grub$Batch,"_", grub$ApoE)
+grub$batchapoe<- as.factor(grub$batchapoe)
+design<- model.matrix(~0 + diag_cell_sex + batchapoe, data = grub@meta.data)  #try concatenating batch and apoe
+colnames(design) <- gsub("diag_cell_sex", "", colnames(design))
+colnames(design) <- gsub("batchapoe", "", colnames(design))
+
+#attempt 2: still not estimable
+design<- model.matrix(~0 + diag_cell_sex + Batch, data = grub@meta.data)  #remove batch or apoe and check  
+colnames(design) <- gsub("diag_cell_sex", "", colnames(design))
+colnames(design) <- gsub("Batch", "", colnames(design))
+
+#attempt 3: works!
+design<- model.matrix(~0 + diag_cell_sex + ApoE, data = grub@meta.data)  #remove batch or apoe and check
+colnames(design) <- gsub("diag_cell_sex", "", colnames(design))
+
+#Filter and normalize counts
+dge <-  as.matrix(GetAssayData(grub, slot="counts")) 
+dge <- DGEList(counts= dge)
+keep <- filterByExpr(dge, design)
+summary(keep) #false 10617, true 233
+dge <- dge[keep,keep.lib.sizes=FALSE]
+dge <- calcNormFactors(dge, method = "TMMwsp")
+
+#Run Voom and make contrasts
+vm<- voom(dge, design, plot = TRUE)
+fit <- lmFit(vm, design)
+head(coef(fit))
+
+contrasts.matrix<-  makeContrasts(AstM= AD_ast_Male - Control_ast_Male,
+                                  AstF= AD_ast_Female - Control_ast_Female,
+                                  NeuM= AD_neu_Male - Control_neu_Male,
+                                  NeuF = AD_neu_Female - Control_neu_Female,
+                                  MicM= AD_mic_Male - Control_mic_Male,
+                                  MicF = AD_mic_Female - Control_mic_Female,
+                                  OliM= AD_oli_Male - Control_oli_Male,
+                                  OliF= AD_oli_Female - Control_oli_Female,
+                                  OpcM= AD_opc_Male - Control_opc_Male,
+                                  OpcF= AD_opc_Female - Control_opc_Female,
+                                  levels = colnames(design))
+fit <- contrasts.fit(fit, contrasts = contrasts.matrix) 
+fit <- eBayes(fit)
+
+#Run loop to get results 
+delist_key<- c("AstM",  "NeuM", "MicM", "OliM" , "OpcM",
+               "AstF","NeuF", "MicF", "OliF", "OpcF" )
+
+library(stringr)
+markers2= NULL
+markers3= NULL
+for(key in delist_key){
+  key1<- str_sub(key,-4,-2) #Cell_type
+  key2<- gsub(key1,"",key) #Sex
+  markers<-  topTable(fit, coef= key, sort.by = "logFC", number = Inf, adjust.method = "BH")  
+  markers$group<- key
+  markers$Sex<- key2
+  markers$cell_type<- key1
+  markers$gene<- rownames(markers)
+  markers$dir<- ifelse(markers$logFC < 0, "neg","pos")
+  colnames( markers)[c(1,4,5)] <- c("avg_logFC", "p_val", "p_val_adj")
+  markers2<- rbind(markers2, markers) #no thresholds
+  markers<- subset(markers, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)  
+  markers3<- rbind(markers3, markers) 
+}
+
+table(markers3$group, markers3$dir)
+male.markersOG<- markers2[markers2$Sex == "M",]
+female.markersOG<- markers2[markers2$Sex != "M",]
+
+write.csv(male.markersOG, file="grub_DEG_males.csv") #lnf= limma no filter
+write.csv(female.markersOG, file="grub_DEG_females.csv") #lnf= limma no filter
+```

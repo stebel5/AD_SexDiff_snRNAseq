@@ -1,0 +1,217 @@
+---
+title: "Mathys et al data set up for sex stratified differential gene expression analysis"
+author: "Stella Belonwu"
+date: "03/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Data acquired from Single cell RNA-seq from Prefrontal Cortex\
+https://www.synapse.org/#!Synapse:syn18485175\
+
+Load packages\
+```{r}
+library(dplyr)
+library(ggplot2)
+library(Seurat) 
+library(dittoSeq) 
+library(gplots)
+library(magrittr)
+```
+
+Input data\
+```{r}
+#Set your working directory to where you keep the following datasets and supporting metadata
+math_meta<- read.table("filtered_column_metadata.txt",header= TRUE, sep = "\t")
+math_assay_meta<-  read.csv("snRNAseqPFC_BA10_assay_scRNAseq_metadata.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+math_spec_meta<-  read.csv("snRNAseqPFC_BA10_biospecimen_metadata.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+math_samp_key<-  read.csv("snRNAseqPFC_BA10_Sample_key.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+math_id_map<- read.csv("snRNAseqPFC_BA10_id_mapping.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+math_clin<-read.csv("ROSMAP_Clinical_2019-05_v3.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+ProteinCodingGenes<- read.csv("ensembl_ProteinCodingGenes.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+supp1<-read.xlsx("mathys_supp_t1.xlsx", sheetIndex =2 ) #supplementary table 1
+supp2<-read.xlsx("mathys_supp_t3.xlsx",sheetIndex =1 ) #supplementary table 3
+```
+
+Select cases: Braak >= 4, CERAD score <= to 2 and controls: Braak  <=  3, CERAD  >= 3\
+Info to keep in metadata: ApoE, PMI, Diagnosis, Batch, SampleID, PatientID, Age, Sex (Male=1, Female=0)\
+```{r}
+length(unique(math_meta$projid)) #48  
+length(unique(math_id_map$projid)) #48
+ 
+colnames(math_clin)
+math_clin2<-math_clin[,c(1,3,7,10,13,14,15,16)]
+
+length(unique(math_clin2$projid)) #3584
+
+math_clin2<- math_clin2[math_clin2$projid %in% math_meta$projid,]
+length(unique(math_clin2$projid)) #48
+summary(is.na(math_clin2$apoe_genotype)) #1 sample does not have ApoE
+math_clin2<- math_clin2[!(is.na(math_clin2$apoe_genotype)),] #47
+
+#Set diagnosis categories: control=braak <=3, cerad>=3; ad= braak>=4, cerad<=2)
+math_clin2$Diagnosis<- ifelse(math_clin2$braaksc <= 3 & math_clin2$ceradsc >= 3, "Control", "NA" )
+math_clin2$Diagnosis<- ifelse(math_clin2$braaksc >= 4 & math_clin2$ceradsc <=2 , "AD", math_clin2$Diagnosis )
+table(math_clin2$Diagnosis) # 20 AD, 22 Control, 5NA
+math_clin2<- math_clin2[math_clin2$Diagnosis != "NA",] #42
+
+math_meta2<- math_clin2  
+math_meta2<- dplyr::inner_join(math_meta2, math_id_map[,c(2,3)], by="projid")
+math_meta2<- dplyr::inner_join(math_meta2, math_spec_meta[,c(1,2)], by="projid")
+math_meta2<- dplyr::inner_join(math_meta2, math_meta[,c(1,2,5,6,7)], by="projid") 
+math_meta2<- dplyr::inner_join(math_meta2, math_assay_meta[,c(1,6)], by="specimenID")
+
+colnames(math_meta2)[c(2,3,4,5,14,16)]<- c("Sex","ApoE","Age","PMI", "Cell_type","Batch") #rename column names
+math_meta2$Sex<- ifelse(math_meta2$Sex == 0, "Female", "Male") 
+```
+
+Prep metadata and count data.\
+```{r}
+math_meta3<- math_meta2[!duplicated(math_meta2),]
+length(unique(math_meta2$TAG)) #62993/70634
+
+table(math_clin2$apoe_genotype) #23 (9), 33 (23), 34(7), 44(3)
+
+table(math_meta3$Diagnosis, math_meta3$ApoE)
+math_meta3$diag_apoe_cell<- paste0(math_meta3$Diagnosis,"_",math_meta3$ApoE,"_",math_meta3$Cell_type)
+
+#Remove endothelial cells and pericytes 
+table(math_meta3$diag_apoe_cell)
+math_meta3<- math_meta3[math_meta3$Cell_type!= "End",] #62886
+math_meta3<- math_meta3[math_meta3$Cell_type!= "Per",] #62741
+```
+
+Create Seurat object\
+Initialize the Seurat object with the raw (non-normalized data).\
+Keep all genes expressed in >= 3 cells.\
+Keep all cells with at least 200 detected genes.\
+```{r}
+sapply(math_meta3, class)
+math_meta3$ApoE %<>% factor
+math_meta3$braaksc %<>% factor
+math_meta3$ceradsc %<>% factor
+math_meta3$Batch %<>% factor
+math_meta3$Sex %<>% factor
+
+rownames(math_meta3)<- math_meta3$TAG
+
+#create directory containing matrix.mtx, genes.tsv, barcodes.tsv
+data.dir= "[directory containing matrix.mtx, genes.tsv, barcodes.tsv]"
+list.files(data.dir)
+math_data <- Seurat::Read10X(data.dir, gene.column=1)
+ 
+dim(math_data) #17296 genes, 70634 cells
+math_data2<- math_data[,colnames(math_data) %in% rownames(math_meta3)]
+dim(math_data2) # 17926 62741  
+ 
+math <- CreateSeuratObject(counts = math_data2, project = "math", min.cells = 3, min.features = 200, meta.data = math_meta3) #at least 3 cells, and 200 genes features
+math #17723 features across 62741 samples 
+
+math[["percent.mt"]] <- PercentageFeatureSet(math, pattern = "^MT-") 
+unique(math$percent.mt) #already removed by authors
+
+#Save seurat object
+saveRDS(math, file = "mathys1.rds")
+```
+
+Regular Seurat normalization\
+```{r}
+range(math$nFeature_RNA) # 201 7525   
+hist(math$nFeature_RNA)
+unique(math$Batch) #has 12 batches
+unique(math$Cell_type) #"Ex"  "Oli" "In"  "Mic" "Opc" "Ast"
+
+math<- NormalizeData(object = math) # by default: normalization.method = "LogNormalize", scale.factor = 10000
+ 
+math <- FindVariableFeatures(object = math, selection.method = "vst", nfeatures = 3188)
+
+colnames(math@meta.data) 
+length(rownames(math)) #17723/17926 
+all.genes <- rownames(math)  
+math <- ScaleData(object = math, features = all.genes, vars.to.regress = c("nCount_RNA"))
+```
+
+Dimensionality reduction\
+```{r}
+math <- RunPCA(math, verbose = FALSE)
+
+ElbowPlot(math, ndims = 50)
+
+math <- RunUMAP(math, dims = 1:10, verbose = FALSE)
+
+math <- RunTSNE(math, dims = 1:10, verbose = FALSE)
+
+math <- FindNeighbors(math, dims = 1:10, verbose = FALSE)
+
+math <- FindClusters(object = math, resolution = seq(0.8,2,0.2)) #default is a resolution of 0.8
+
+top10_varfeatures <- head(VariableFeatures(math), 10)
+
+#Generate QC plots
+plot1 <- VariableFeaturePlot(math)
+plot2 <- LabelPoints(plot = plot1, points = top10_varfeatures, repel = TRUE)
+CombinePlots(plots = list(plot1, plot2) ) 
+
+Idents(math) <- "orig.ident"
+dittoPlot(math, "nFeature_RNA", group.by = "orig.ident")
+dittoPlot(math, "nCount_RNA",group.by = "orig.ident")
+
+#Save Seurat object
+saveRDS(math, file = "mathys2.rds")
+```
+
+Explore PCA and UMAP plots and search for potential confounders\ 
+ApoE:"#2CFFC6","#AD7700" ,"#1C91D4", "#9AD2F2"\
+Diagnosis :"#007756", "#D5C711" (ad , control)\
+Sex: "#005685" "#A04700" (female, male)\
+Cell: "#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7" (ast,ex,in,mic,oli,opc)\
+
+Plot PCA\
+```{r}
+dittoDimPlot( object = math, "Diagnosis",reduction = "pca" , color.panel = c("#007756", "#D5C711"))
+
+dittoDimPlot( object = math, "Batch", reduction = "pca", color.panel = c("#B14380", "#4D4D4D" ,"#FFBE2D" ,"#80C7EF", "#00F6B3" ,"#F4EB71", "#06A5FF", "#FF8320" ,"#D99BBD" ,"#8C8C8C", "#FFCB57" ,"#9AD2F2"))
+
+dittoDimPlot( object = math,  "ApoE", reduction = "pca", color.panel = c("#2CFFC6","#AD7700" ,"#1C91D4", "#9AD2F2" ))
+
+dittoDimPlot( object = math, "Subject", reduction = "pca")#, color.panel = dittoColors()[26:56])
+
+dittoDimPlot( object = math, "Sex", reduction = "pca" , color.panel = c( "#005685" ,"#A04700"))
+
+dittoDimPlot( object = math, "Cell_type", reduction = "pca", color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+
+dittoDimPlot( object = math, "Cell_type",reduction = "pca", split.by = "Batch", split.ncol= 3,color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+
+dittoDimPlot( object = math, "Cell_type",reduction = "pca", split.by = "ApoE", color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+
+dittoDimPlot( object = math, "Cell_type",reduction = "pca", split.by = "Sex",color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+```
+ 
+Plot UMAP\
+```{r}
+dittoDimPlot( object = math, "Diagnosis",reduction = "umap" , color.panel = c("#007756", "#D5C711"))
+
+dittoDimPlot( object = math, "Batch", reduction = "umap", color.panel = c("#B14380", "#4D4D4D" ,"#FFBE2D" ,"#80C7EF", "#00F6B3" ,"#F4EB71", "#06A5FF", "#FF8320" ,"#D99BBD" ,"#8C8C8C", "#FFCB57" ,"#9AD2F2"))
+
+dittoDimPlot( object = math,  "ApoE", reduction = "umap", color.panel = c("#2CFFC6","#AD7700" ,"#1C91D4", "#9AD2F2" ))
+
+dittoDimPlot( object = math, "Subject", reduction = "umap")#, color.panel = dittoColors()[26:56])
+
+dittoDimPlot( object = math, "Sex", reduction = "umap" , color.panel = c( "#005685" ,"#A04700"))
+
+dittoDimPlot( object = math, "Cell_type", reduction = "umap", color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+
+dittoDimPlot( object = math, "Cell_type",reduction = "umap", split.by = "Batch", split.ncol= 3,color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+
+dittoDimPlot( object = math, "Cell_type",reduction = "umap", split.by = "ApoE", color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+
+dittoDimPlot( object = math, "Cell_type",reduction = "umap", split.by = "Sex",color.panel = c("#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00", "#CC79A7"))
+```
+
+Check session info\
+```{r}
+sessionInfo()
+```

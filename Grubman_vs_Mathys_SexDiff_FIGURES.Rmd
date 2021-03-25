@@ -1,0 +1,253 @@
+---
+title: "Plots for comparing Grubman and Mathys Sex stratified DGE analysis results"
+author: "Stella Belonwu"
+date: "03/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal: Create plots for paper\
+Figure 1: Overview of cohort sample definition and workflow for sex stratified cell type specific differential gene expression and functional enrichment.\
+Figure 2: Sex stratified cell type specific differential gene expression signatures in the prefrontal cortex.\
+Figure 3: Sex stratified cell type specific differential gene expression signatures in the entorhinal cortex.\
+*Figure 4: Sex stratified cell type specific differential gene expression signatures across brain regions.*\
+Figure 5: Enriched pathway networks in male and female cells.\
+
+Supplementary Figure 1: Dimensionality reduction of prefrontal and entorhinal cortices cohort cells by APOE genotype, batch, cell type, diagnosis, and sex.\
+Supplementary Figure 2: Shared and unique male and female disease signatures across and within cell types in the prefrontal and entorhinal cortices.\
+Supplementary Figure 3: Enriched disease pathway networks male and female astrocytes\
+Supplementary Figure 4: Enriched disease pathway networks in male and female oligodendrocytes and OPCs.\
+
+```{r}
+library(stringr)
+library(Hmisc)
+```
+
+Input and setup grubman data\
+```{r}
+setwd("/your directory")
+male.markersG<-  read.csv("grub_DEG_males.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+female.markersG<-  read.csv("grub_DEG_females.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)  
+male.markersG$X<- NULL
+female.markersG$X<- NULL
+unique(female.markersG$Sex)
+female.markersG$Sex<- "F"
+
+male.markersG<-male.markersG[male.markersG$gene != "MALAT1",]
+female.markersG<- female.markersG[female.markersG$gene != "MALAT1",]
+
+dem.markersg<- subset(male.markersG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+def.markersg<- subset(female.markersG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+```
+
+Input and setup mathys data\
+```{r}
+setwd("/your directory")
+male.markersM<- read.csv("math_DEG_males.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+female.markersM<- read.csv("math_DEG_females.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+male.markersM$X<- NULL
+female.markersM$X<- NULL
+female.markersM$Sex<- "F"
+dem.markersm<- subset(male.markersM, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+def.markersm<- subset(female.markersM, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+```
+
+Cell type numbers\
+```{r}
+setwd("/your directory")
+grub<- readRDS( "grub_corrected_full_nohybrid.rds")
+ 
+table(grub$cell_type)
+grub$diag_cell_sex<- paste0(grub$Diagnosis,"_", grub$cell_type, "_", grub$Sex)
+table(grub$diag_cell_sex)
+ 
+setwd("/your directory")
+math<- readRDS("mathys2.rds")
+
+table(math$cell_type)
+math$diag_cell_sex<- paste0(math$Diagnosis,"_", math$Cell_type, "_", math$Sex)
+table(math$diag_cell_sex)
+```
+
+SELECT GENES PRESENT IN BOTH DATASETS\
+```{r}
+markersm<- rbind(male.markersM, female.markersM)
+markersg<- rbind(male.markersG, female.markersG)
+
+#Using genes that intersect
+math_genes<- unique(markersm$gene) #137
+grub_genes<- unique(markersg$gene) #233
+all_genes<- intersect(math_genes, grub_genes) #103
+
+dem.markersm<- dem.markersm[dem.markersm$gene %in% all_genes,]
+def.markersm<- def.markersm[def.markersm$gene %in% all_genes,]
+dem.markersg<- dem.markersg[dem.markersg$gene %in% all_genes,]
+def.markersg<- def.markersg[def.markersg$gene %in% all_genes,]
+
+dem.markersg$cell_type<- tolower(dem.markersg$cell_type)
+def.markersg$cell_type<- tolower(def.markersg$cell_type)
+
+table(dem.markersg$group)
+table(def.markersg$group)
+table(dem.markersm$group) # nothing for Inneu males
+table(def.markersm$group)
+```
+
+Figure 4a\
+COLOR UPSET BARS BASED ON OVERLAPS: ENT, PFX, MALE, FEMALE\
+pfx: "darkmagenta", ent= dittoColors()[6] /orange, female:  "#A04700", male:  "#005685"\
+```{r}
+#c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars).
+#Ast
+ast.de.list<- list( Ast_M_Pfx = dem.markersm$gene[dem.markersm$cell_type == "Ast"], 
+                    Ast_F_Pfx= def.markersm$gene[def.markersm$cell_type == "Ast"],
+                    Ast_M_Ent = dem.markersg$gene[dem.markersg$cell_type == "ast"], 
+                    Ast_F_Ent= def.markersg$gene[def.markersg$cell_type == "ast"])
+upset(fromList(ast.de.list),sets = c("Ast_M_Pfx","Ast_F_Pfx","Ast_M_Ent","Ast_F_Ent"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Ast_F_Ent","Ast_M_Ent"), color= dittoColors()[6], active = T), list(query = intersects, params =  list("Ast_F_Pfx","Ast_F_Ent"), color=   "#A04700", active = T),  list(query = intersects, params =  list("Ast_M_Pfx","Ast_M_Ent"), color=   "#005685", active = T)))
+grid.text("DEGs shared in Astrocytes",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+
+#Mic
+mic.de.list<- list( Mic_M_Pfx = dem.markersm$gene[dem.markersm$cell_type == "Mic"], 
+                    Mic_F_Pfx = def.markersm$gene[def.markersm$cell_type == "Mic"],
+                    Mic_M_Ent = dem.markersg$gene[dem.markersg$cell_type == "mic"], 
+                    Mic_F_Ent = def.markersg$gene[def.markersg$cell_type == "mic"] )
+upset(fromList(mic.de.list),sets = c("Mic_M_Pfx","Mic_F_Pfx","Mic_M_Ent","Mic_F_Ent"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Mic_F_Ent","Mic_M_Ent"), color= dittoColors()[6], active = T))) 
+grid.text("DEGs shared in Microglia",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+
+#Neu1
+neu.de.list1<- list( Ex_M_Pfx = dem.markersm$gene[dem.markersm$cell_type == "Ex"], 
+                    Ex_F_Pfx = def.markersm$gene[def.markersm$cell_type == "Ex"],
+                    Neu_M_Ent = dem.markersg$gene[dem.markersg$cell_type == "neu"], 
+                    Neu_F_Ent = def.markersg$gene[def.markersg$cell_type == "neu"])
+upset(fromList(neu.de.list1), sets = c("Ex_M_Pfx","Ex_F_Pfx","Neu_M_Ent","Neu_F_Ent"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Neu_F_Ent","Neu_M_Ent"), color= dittoColors()[6], active = T),list(query = intersects, params =  list("Ex_F_Pfx","Ex_M_Pfx"), color= "darkmagenta", active = T), list(query = intersects, params =  list("Ex_F_Pfx","Neu_F_Ent"), color=   "#A04700", active = T),  list(query = intersects, params =  list("Ex_M_Pfx","Neu_M_Ent"), color=   "#005685", active = T)))
+grid.text("DEGs shared in Excitatory Neurons",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+ 
+#Neu2
+neu.de.list2<- list( In_M_Pfx = dem.markersm$gene[dem.markersm$cell_type == "In"],
+                    In_F_Pfx = def.markersm$gene[def.markersm$cell_type == "In"],
+                    Neu_M_Ent = dem.markersg$gene[dem.markersg$cell_type == "neu"],
+                    Neu_F_Ent = def.markersg$gene[def.markersg$cell_type == "neu"])
+upset(fromList(neu.de.list2), sets = c("In_F_Pfx","Neu_M_Ent","Neu_F_Ent"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets= 4,sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Neu_F_Ent","Neu_M_Ent"), color= dittoColors()[6], active = T)))
+grid.text("DEGs shared in Inhibitory Neurons",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+
+#Oli
+oli.de.list<- list( Oli_M_Pfx = dem.markersm$gene[dem.markersm$cell_type == "Oli"], 
+                    Oli_F_Pfx = def.markersm$gene[def.markersm$cell_type == "Oli"],
+                    Oli_M_Ent = dem.markersg$gene[dem.markersg$cell_type == "oli"], 
+                    Oli_F_Ent = def.markersg$gene[def.markersg$cell_type == "oli"])
+upset(fromList(oli.de.list), sets = c("Oli_M_Pfx","Oli_F_Pfx","Oli_M_Ent","Oli_F_Ent"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets= 4,sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Oli_F_Ent","Oli_M_Ent"), color= dittoColors()[6], active = T)))
+grid.text("DEGs shared in Oligodendrocytes",x = 0.695, y=0.98, gp=gpar(fontsize=19))
+
+#Opc
+opc.de.list<- list( Opc_M_Pfx = dem.markersm$gene[dem.markersm$cell_type == "Opc"],
+                    Opc_F_Pfx = def.markersm$gene[def.markersm$cell_type == "Opc"],
+                    Opc_M_Ent = dem.markersg$gene[dem.markersg$cell_type == "opc"],
+                    Opc_F_Ent = def.markersg$gene[def.markersg$cell_type == "opc"])
+upset(fromList(opc.de.list), sets = c("Opc_M_Pfx","Opc_F_Pfx","Opc_M_Ent","Opc_F_Ent"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets= 4,sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25),queries = list(list(query = intersects, params =  list("Opc_F_Ent","Opc_M_Ent"), color= dittoColors()[6], active = T)))    
+grid.text("DEGs shared in OPCs",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+```
+
+Setup for heatmaps  
+```{r}
+setwd("/your directory")
+male.markersG<-  read.csv("grub_DEG_males.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+female.markersG<-  read.csv("grub_DEG_females.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)  
+male.markersG$X<- NULL
+female.markersG$X<- NULL
+unique(female.markersG$Sex)
+female.markersG$Sex<- "F"
+
+male.markersG<-male.markersG[male.markersG$gene != "MALAT1",]
+female.markersG<- female.markersG[female.markersG$gene != "MALAT1",]
+dem.markersg<- subset(male.markersG, p_val_adj < 0.05 )
+def.markersg<- subset(female.markersG, p_val_adj < 0.05 )
+
+setwd("/your directory")
+male.markersM<- read.csv("math_DEG_males.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+female.markersM<- read.csv("math_DEG_females.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+male.markersM$X<- NULL
+female.markersM$X<- NULL
+female.markersM$Sex<- "F"
+dem.markersm<- subset(male.markersM, p_val_adj < 0.05)
+def.markersm<- subset(female.markersM, p_val_adj < 0.05)
+
+dem.markersm$group1<- "Pfx"
+def.markersm$group1<- "Pfx"
+dem.markersg$group1<- "Ent"
+def.markersg$group1<- "Ent"
+
+markersm<- rbind(dem.markersm, def.markersm)
+markersg<- rbind(dem.markersg, def.markersg)
+
+#Use genes that intersect in both datasets
+math_genes<- unique(markersm$gene) #137
+grub_genes<- unique(markersg$gene) #232
+all_genes<- intersect(math_genes, grub_genes) #103
+
+all_markers<- rbind(dem.markersm, def.markersm, dem.markersg, def.markersg) #2211
+all_markers<- all_markers[all_markers$gene %in% all_genes,] #1141
+
+length(unique(all_markers$gene)) #103
+all_markers$group2<- paste0(all_markers$group,"_", all_markers$group1)
+```
+
+Create matrix for combined heatmap  
+```{r}
+colnames(all_markers)
+all_markers<- all_markers[,c(10,1,13)]
+for(ct in unique(all_markers$group2)){
+ new_col<- print(paste0('all_markers$',ct,'<- ifelse(all_markers$group2 == "',ct,'",all_markers$avg_logFC, 0)'),sep='',quote = FALSE)  
+ show(eval(expr = parse(text = new_col)))
+}
+
+#Remove duplicates: if repeats add colsums of all repeated rows then remove duplicates
+all_markers <- all_markers %>% group_by(gene) %>% mutate(count = n())
+length(which(all_markers$count > 1)) #1141
+which(all_markers$gene == "LINGO1")   
+
+all_markers<- all_markers %>%
+   arrange(gene)
+which(all_markers$gene ==  "LINGO1")  
+
+all_markers<- all_markers %>%                  # Specify data frame
+  group_by(gene) %>%                             # Specify group indicator
+  summarise_at(vars(colnames(all_markers[,4:25])),  # Specify column
+               list(name = sum))                        # Specify function
+
+class(all_markers) #tibble
+all_markers<- as.data.frame(all_markers)
+colnames(all_markers)[2:23]<-gsub("_name","",colnames(all_markers[2:23])) 
+rownames(all_markers)<- all_markers$gene
+```
+
+Figure 4b: Plot heatmap
+```{r}
+all_markers$gene<- NULL
+colnames(all_markers)
+
+metadata <- data.frame(Region_Sex= factor(c("AstM_Ent" ,"AstM_Pfx", "MicM_Ent", "MicM_Pfx" ,"OliM_Ent" ,"OliM_Pfx", "OpcM_Ent", "OpcM_Pfx" ,"NeuM_Ent", "ExM_Pfx",  "InM_Pfx" , "AstF_Ent", "AstF_Pfx" ,"MicF_Ent","MicF_Pfx", "OliF_Ent", "OliF_Pfx" ,"OpcF_Ent" ,"OpcF_Pfx", "NeuF_Ent", "ExF_Pfx","InF_Pfx")))
+rownames(metadata)<- metadata$Region_Sex
+
+metadata$Sex<- str_sub(metadata$Region_Sex,-5,-5) #ApoE
+metadata$Brain_Region<- capitalize(str_sub(metadata$Region_Sex,-3,-1))
+metadata$Celltype<- gsub("F_Ent", "",metadata$Region_Sex) 
+metadata$Celltype<- gsub("F_Pfx", "",metadata$Celltype) 
+metadata$Celltype<- gsub("M_Ent", "",metadata$Celltype) 
+metadata$Celltype<- gsub("M_Pfx", "",metadata$Celltype) 
+metadata$Region_Sex<- NULL
+
+metac<- list(Sex = c("M"= "#005685", "F" = "#A04700"), Brain_Region= c(Ent= dittoColors()[6], Pfx=  "darkmagenta"), Celltype=( c("Ast" = "#E69F00", "Ex"= "#F0E442" ,"In"= "#CC79A7" , "Neu"= "cyan3" ,"Mic" = "#009E73", "Oli"="#D55E00","Opc" ="#0072B2" )))
+
+range(all_markers) # -2.174422  3.460659
+colnames(all_markers)<- capitalize(colnames(all_markers))
+
+rangem <- max(abs(all_markers));
+pheatmap(all_markers, angle_col= "90", angle_row= "45",fontsize_row = 12,fontsize_col= 12 , show_rownames = FALSE, show_colnames = FALSE, scale = "none" ,  fontsize= 12,annotation_col= metadata, annotation_colors = metac ,color = colorRampPalette(c(dittoColors()[11], "white", dittoColors()[38]))(100), breaks = seq(-rangem, rangem, length.out = 100))
+
+breaksList = seq(-4, 4, by =0.25)
+pheatmap(all_markers, angle_col= "90", angle_row= "45",fontsize_row = 12,fontsize_col= 12 , show_rownames = FALSE, show_colnames = FALSE, scale = "none" ,  fontsize= 12,annotation_col= metadata, annotation_colors = metac , color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdBu")))(length(breaksList)),  breaks = breaksList)
+```
+ 

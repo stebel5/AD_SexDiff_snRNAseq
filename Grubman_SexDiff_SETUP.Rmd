@@ -1,0 +1,318 @@
+---
+title: "Grubman et al data set up for sex stratified differential gene expression analysis"
+author: "Stella Belonwu"
+date: "03/23/2021"
+output: html_document
+---
+
+Data acquired from Single nucleus RNA-seq from the Entorhinal Cortex\
+Single nucleus RNA-seq from Entorhinal Cortex (http://adsn.ddnetbio.com)\
+
+Notes: Dataset has already been QC'ed\
+-The raw expression matrix was composed of 33,694 genes and 14,876 cells.\
+-Genes without any counts in any cells were filtered out (needed to have at least 2 transcripts in 10 cells).\
+-Discarded 100 PMI-associated genes.\
+-Discarded cells outside 5th and 95th percentile of genes detected and unique molecular identifiers.\
+-Cells with more than 10% of their UMIs assigned to mitochondrial genes were filtered out.\
+-Matrix was normalized with a scaling factor of 10000 before FindVariableGenes was used to define variable genes with the parameters x.low.cutoff = 0.0125, x.high.cutoff = 3, and y.cutoff = 0.5.\
+-No need to subset mitochondrial counts, keep below 10% as paper did\
+-No need to subset cells, already done by paper\
+-Remove pctMT, nGene, nUMI, agrees with Seurat's percent.nt, nFeature_RNA, and nCount_RNA respectively\
+
+Plan:\
+-Run regular normalization\
+-Batch correct with seurat integration and SCT\
+-Subset datasets for DE analysis\
+
+Input data\ 
+```{r}
+setwd("/your directory/")
+grub_Counts<-read.table("scRNA_rawCounts_grubman.tsv",header= TRUE, sep = "\t")
+grub_meta<- read.table("scRNA_metadata_grubman.tsv",header= TRUE, sep = "\t")
+grub_supp<- read.csv("scRNA_supp_grubman.csv" ,header= TRUE, sep = ",", stringsAsFactors=FALSE)
+```
+
+Input packages\
+```{r}
+library(dittoSeq)
+library(ggplot2)
+library(Seurat) 
+library(dplyr)
+library(sctransform)
+library(cowplot)
+library(magrittr)
+```
+
+Prep metadata and count data\  
+```{r}
+colnames(grub_meta)
+grub_meta2<- grub_meta[,c(1:3,7,8)]
+colnames(grub_meta2)[4]<- "grub_cellType" #original cell labels
+
+unique(grub_meta2$batch)
+unique(grub_meta2$batchCond)
+unique(grub_meta2$patient)
+grub_meta2$patient<- as.character(grub_meta2$patient)
+rownames(grub_meta2)<- grub_meta2$sampleID
+ 
+#Remove unassigned samples and keep all present ApoE groups
+colnames(grub_meta2)[c(2,3,5)]<- c("Batch", "Patient","Diagnosis") 
+grub_supp2<- grub_supp[c(1:6,9:14),]
+grub_supp2$patient<- c("AD1","AD2", "AD3", "AD4" ,"AD5", "AD6" , "Ct1", "Ct2", "Ct3", "Ct4", "Ct5", "Ct6")
+grub_supp3<- grub_supp2[!is.na(grub_supp2$ApoE), c(8,2:6)] #AD1 is 34, AD3 is 44 *update from authors
+
+table(grub_supp3$ApoE) #1 24, 5 33, 4 34,  2 44
+table(grub_supp3$Diagnosis) #6 AD, 6 Control
+
+sapply(grub_meta2,class)
+grub_meta2$Diagnosis<- as.character(grub_meta2$Diagnosis)
+grub_meta2$Diagnosis<- ifelse(grub_meta2$Diagnosis == "ct", "Control", grub_meta2$Diagnosis)
+
+colnames(grub_supp3)[c(1,3)]<- c("Patient", "Sex")
+unique(grub_supp3$Patient) #"AD1" "AD2" "AD3" "AD4" "AD5" "AD6" "Ct1" "Ct2" "Ct3" "Ct4" "Ct5" "Ct6"
+unique(grub_meta2$Patient) #  "AD5"   "AD6"   "AD-un" "AD3"   "AD4"   "Ct6"   "Ct5"   "Ct-un" "Ct4"   "Ct3"   "Ct1"   "Ct2"   "AD2"   "AD1"  
+
+grub_meta3<- grub_meta2[grub_meta2$Patient != "AD-un",  ] #13029  
+grub_meta3<- grub_meta3[grub_meta3$Patient != "Ct-un",  ] #12770 
+
+grub_supp3<- grub_supp3[grub_supp3$ApoE != "24",  ] #Remove the APOE24 sample
+grub_meta3<- grub_meta3[grub_meta3$Patient %in% grub_supp3$Patient, ] #11704
+ 
+#Match Count Data   
+grub_Counts2<- grub_Counts
+rownames(grub_Counts2)<- grub_Counts2$geneName
+grub_Counts2$geneName<- NULL
+dim(grub_Counts2) #10850genes 13214cells
+  
+grub_meta4<- dplyr::inner_join(grub_meta3, grub_supp3[,c(1:4,6)], by="Patient") 
+rownames(grub_meta4)<- grub_meta4$sampleID
+grub_meta4$sampleID<- NULL 
+grub_meta4$TAG<- rownames(grub_meta4)
+sapply(grub_meta4, class)
+grub_meta4$ApoE %<>% factor
+grub_meta4$Sex %<>% factor
+grub_meta4$Batch %<>% factor
+
+grub_Counts3<- grub_Counts2[,colnames(grub_Counts2) %in% rownames(grub_meta4)] #10850 genes, 11704 cells 
+```
+
+Create Seurat object\ 
+```{r}
+grub<-  CreateSeuratObject(counts = grub_Counts3,project = "grub", min.cells = 3, min.features = 200, meta.data = grub_meta4)
+
+# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+grub[["percent.mt"]] <- PercentageFeatureSet(grub, pattern = "^MT-")
+
+range(grub$nFeature_RNA) # 274 1632 
+range(grub$percent.mt) #0.000000 9.952324
+
+# Visualize QC metrics as a violin plot
+VlnPlot(grub, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+# Use FeatureScatter to visualize feature-feature relationships i.e. columns in object metadata, PC scores etc.
+plot1 <- FeatureScatter(grub, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(grub, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+Normalize object\
+```{r}
+grub<- NormalizeData(object = grub) 
+grub <- FindVariableFeatures(object = grub, selection.method = "vst", nfeatures = 2000, x.low.cutoff = 0.0125, x.high.cutoff = 3,  y.cutoff = 0.5) 
+
+top10_varfeatures <- head(VariableFeatures(grub), 10)
+
+plot1 <- VariableFeaturePlot(grub)
+plot2 <- LabelPoints(plot = plot1, points = top10_varfeatures, repel = TRUE)
+CombinePlots(plots = list(plot1, plot2) ) 
+```
+
+ScaleData to center the gene expression & Run PCA, UMAP, TSNE (make test plots)\
+```{r}
+length(rownames(grub)) #10850 
+all.genes <- rownames(grub)  
+grub <- ScaleData(object = grub, features = all.genes)
+
+grub <- RunPCA(object = grub, features = VariableFeatures(object = grub))
+ElbowPlot(grub, ndims = 50)
+grub <- RunUMAP(grub, dims = 1:10)
+grub <- RunTSNE(grub, dims = 1:10)
+
+#barplot(1:40, col = dittoColors()[1:40]) #run to select colors
+unique(grub$Batch)
+dittoDimPlot( object = grub, "Batch",reduction = "pca", color.panel = dittoColors()[c(39,15,7,36,25,17)])
+dittoDimPlot( object = grub, "Batch",reduction = "umap" ,color.panel = dittoColors()[c(39,15,7,36,25,17)])
+dittoDimPlot( object = grub, "Batch",reduction = "tsne" ,color.panel = dittoColors()[c(39,15,7,36,25,17)])
+dittoDimPlot( object = grub, "grub_cellType",reduction = "pca")
+dittoDimPlot( object = grub,  "grub_cellType",reduction = "umap")
+dittoDimPlot( object = grub,  "grub_cellType",reduction = "tsne")
+```
+
+Save pre-integration object\
+```{r}
+saveRDS(grub, file = "grub_pre-integration.rds")
+```
+  
+Batch Correction: Split, SC Transform, Seurat Integrate\
+DO NOT RUN SCALE DATA AFTER INTEGRATION\
+https://satijalab.org/seurat/v3.0/sctransform_vignette.html\
+https://satijalab.org/seurat/v3.0/integration.html\
+fix space error: https://satijalab.org/seurat/v3.0/future_vignette.html\
+```{r}
+#SCTransform replaces NormalizeData, ScaleData, and FindVariableFeatures; DON'T RUN SCALE DATA AFTER
+grub.list <- SplitObject(grub, split.by = "Batch")
+
+for (i in 1:length(grub.list)) {
+    grub.list[[i]] <- SCTransform(grub.list[[i]], verbose = TRUE) 
+}
+ 
+#Select features for downstream integration, and run PrepSCTIntegration, which ensures that all necessary Pearson residuals have been calculated.
+grub.features <- SelectIntegrationFeatures(object.list = grub.list, nfeatures = 3000)
+options(future.globals.maxSize = 1000 * 1024^3) #Give at least 1GB
+grub.list <- PrepSCTIntegration(object.list = grub.list, anchor.features = grub.features, verbose = FALSE)
+
+#Identify anchors and integrate the datasets. Be sure to set normalization.method = 'SCT':
+grub.anchors <- FindIntegrationAnchors(object.list = grub.list, normalization.method = "SCT", anchor.features = grub.features, verbose = FALSE)
+grub.integrated <- IntegrateData(anchorset =grub.anchors, normalization.method = "SCT", verbose = FALSE)
+
+#Adding a command log without an assay associated with it -> not an issue (https://github.com/satijalab/seurat/issues/2505)
+grub.integrated@assays$integrated@counts
+```
+
+Moving forward, use "RNA" for DE analysis and "integrated" for dimensionality reduction\
+```{r} 
+DefaultAssay(grub.integrated) <- "integrated" # switch to integrated assay. The variable features of this assay are automatically set during IntegrateData
+
+# Run the standard workflow for visualization and clustering
+grub.integrated <- RunPCA(grub.integrated, verbose = FALSE)
+ElbowPlot(grub.integrated, ndims =50)
+grub.integrated <- RunUMAP(grub.integrated, dims = 1:10)
+grub.integrated <- RunTSNE(grub.integrated, dims = 1:10)
+ 
+#QC plots
+p1 <- DimPlot(grub.integrated, reduction = "umap", group.by = "Batch")
+p2 <- DimPlot(grub.integrated, reduction = "umap", group.by = "Diagnosis")
+plot_grid(p1, p2) 
+VlnPlot(grub.integrated, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+Cell Identity analysis using human brain markers from BRETIGEA\
+Calculate a module score for each cell type using Seurat’s AddModuleScore and the top 200 genes for each cell type\
+Observe expression of Marker Genes and UMAP cell identity homogeneity\
+Assign cell based on the highest score in each\
+Identify hybrid cells as cells where the top two highest cell type scores are similar (within 20%) of each other\
+Observe expression of Marker Genes and UMAP cell identity homogeneity\
+```{r}
+library(BRETIGEA)
+markers_df_human_brain
+dim(markers_df_human_brain) #5500,2 
+table(markers_df_human_brain$cell) #1000 each: ast,end, mic, neu,oli,opc (500)
+
+brain_markers<- markers_df_human_brain #5500
+brain_markers<- brain_markers[brain_markers$markers %in% all.genes,] #3007
+table(brain_markers$cell) #ast 616, end 394, mic 428, neu 690, oli 650, opc 229
+length(unique(brain_markers$markers)) #2956
+
+library(dplyr)
+brain_markers2<-  brain_markers  %>%
+  group_by(cell) %>%
+  slice(1:200)
+table(brain_markers2$cell)  
+
+neu_markers<- list(brain_markers2$markers[brain_markers2$cell == "neu"]) 
+end_markers<- list(brain_markers2$markers[brain_markers2$cell == "end"]) 
+ast_markers<- list(brain_markers2$markers[brain_markers2$cell == "ast"]) 
+mic_markers<- list(brain_markers2$markers[brain_markers2$cell == "mic"]) 
+oli_markers<- list(brain_markers2$markers[brain_markers2$cell == "oli"]) 
+opc_markers<- list(brain_markers2$markers[brain_markers2$cell == "opc"]) 
+
+grub2<- grub.integrated
+DefaultAssay(grub2) <- "SCT" 
+
+grub2<-AddModuleScore(object=grub2, features =  neu_markers, pool = NULL,  nbin = 24,  ctrl = 100,  k = FALSE,  assay = NULL, name = 'neu',  seed = 1,  search = FALSE)
+
+grub2<-AddModuleScore(object=grub2, features =  end_markers,  pool = NULL,  nbin = 24,  ctrl = 100,  k = FALSE,  assay = NULL,  name = 'end',  seed = 1,  search = FALSE)
+
+grub2<-AddModuleScore(object=grub2,  features = ast_markers,  pool = NULL,  nbin = 24,  ctrl = 100,  k = FALSE,  assay = NULL,  name = 'ast',  seed = 1,  search = FALSE)
+
+grub2<-AddModuleScore(object=grub2, features =  mic_markers,  pool = NULL,  nbin = 24,  ctrl = 100,  k = FALSE,  assay = NULL,  name = 'mic',  seed = 1,  search = FALSE)
+
+grub2<-AddModuleScore(object=grub2, features =  oli_markers,  pool = NULL,  nbin = 24,  ctrl = 100,  k = FALSE,  assay = NULL,  name = 'oli',  seed = 1,  search = FALSE)
+
+grub2<-AddModuleScore(object=grub2, features =  opc_markers,  pool = NULL,  nbin = 24,  ctrl = 100,  k = FALSE,  assay = NULL,  name = 'opc',  seed = 1,  search = FALSE)
+```
+
+Defined a cell as a hybrid cell if the difference between the first and second highest cell type scores are within 20% of the highest cell type score: (x1 − x2)/x1 < 0.2 x1=highest, x2=second highest\
+```{r} 
+dittoDimPlot( object = grub2, "neu1",reduction = "umap")
+dittoDimPlot( object = grub2, "end1",reduction = "umap")
+dittoDimPlot( object = grub2, "ast1",reduction = "umap")
+dittoDimPlot( object = grub2, "mic1",reduction = "umap")
+dittoDimPlot( object = grub2, "oli1",reduction = "umap")
+dittoDimPlot( object = grub2, "opc1",reduction = "umap")
+
+#Make cell type column
+grub_new_meta<- grub2@meta.data
+grub_new_meta$cell_type<- names(grub_new_meta[, 24:29])[apply(grub_new_meta[, 24:29],1,which.max)]
+table(grub_new_meta$cell_type)
+#ast1 end1 mic1 neu1 oli1 opc1 
+#2144  106  453  666 7373  962 
+
+#Max and second max
+grub_new_meta$x1<- apply(grub_new_meta[, 24:29], 1, max)
+grub_new_meta$x2<- apply(grub_new_meta[, 24:29], 1, function(x) x[order(x)[5]]) #in decreasing order
+grub_new_meta$x1_x2<- (grub_new_meta$x1 - grub_new_meta$x2)/grub_new_meta$x1  
+grub_new_meta$x1_x2<- ifelse(grub_new_meta$x1_x2 < 0.2, 1,0) #if the difference between top two scores is less than 20%, 1, if not 0
+table(grub_new_meta$x1_x2) #11385 0, 319 1
+
+#Make second column including hybrid
+grub_new_meta$cell_type2<- grub_new_meta$cell_type
+grub_new_meta$cell_type2<- ifelse(grub_new_meta$x1_x2 == 1, "hybrid", grub_new_meta$cell_type2 )
+table(grub_new_meta$cell_type2) 
+#ast1   end1 hybrid   mic1   neu1   oli1   opc1 
+#2105    101    319    434    619   7203    923 
+
+#remove numbers from cell type name
+grub_new_meta$cell_type<- gsub("1", "", grub_new_meta$cell_type)
+unique(grub_new_meta$cell_type)
+
+grub_new_meta$cell_type2<- gsub("1", "", grub_new_meta$cell_type2)
+unique(grub_new_meta$cell_type2)
+
+write.csv(grub_new_meta, file="2020_09_13_grub_meta_w_cell_id_scores.csv")
+#remove unnecessary columns
+colnames(grub_new_meta)
+grub_new_meta2<- grub_new_meta[,c(1:15,30,34)]
+colnames(grub_new_meta2)
+
+#replace metadata
+grub2@meta.data<- grub_new_meta2
+```
+
+Compare cell type identification methods\
+original paper, prehybrid & post hybrid\
+```{r}
+table(grub_new_meta2$grub_cellType, grub_new_meta2$cell_type)
+table(grub_new_meta2$grub_cellType, grub_new_meta2$cell_type2)
+
+#rearrange color scheme to properly compare cell type IDs
+unique(grub2$grub_cellType) #"oligo"   "astro"   "endo"    "mg"      "neuron"  "OPC"     ["unID"]    ["doublet"]
+unique(grub2$cell_type) #"oli" "ast" "opc" "neu" "end" "mic"
+unique(grub2$cell_type2) #oli"    "ast"    "opc"    "neu"    "end"    "mic"    ["hybrid"]
+
+dittoColors()
+dittoDimPlot( 'grub_cellType', object = grub2, reduction = "umap", color.panel = c("#E69F00" ,"#dd1c77","#56B4E9" ,"#009E73", "#F0E442","#D55E00", "#0072B2","#666666" ))
+dittoDimPlot( 'cell_type', object = grub2, reduction = "umap", color.panel = c("#E69F00" ,"#56B4E9" ,"#009E73", "#F0E442", "#D55E00" , "#0072B2"))
+dittoDimPlot( 'cell_type2', object = grub2, reduction = "umap", color.panel = c("#E69F00" ,"#56B4E9" ,"#dd1c77" ,"#009E73", "#F0E442",  "#D55E00", "#0072B2"))
+```
+
+Save Seurat object with and without hybrids\
+```{r}
+setwd("/your directory/")
+saveRDS(grub2, file = "grub_corrected_full_hybrid.rds")
+
+grub3 <- subset(grub2, subset = cell_type2 != "hybrid")
+grub2 #11704 samples
+grub3  #11385 samples
+saveRDS(grub3, file = "grub_corrected_full_nohybrid.rds")
+```

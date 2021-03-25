@@ -1,0 +1,116 @@
+---
+title: "Mathys et al sex stratified differential gene expression analysis"
+author: "Stella Belonwu"
+date: "03/23/2021"
+output: html_document
+---
+Goal: Use Limma Voom with TMM_wsp normalization for DE Analysis in the Mathys dataset\
+Design formula will include apoe\
+Cutoffs are FDR < 0.05, L2FC > 0.25\
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages\
+```{r}
+library(readxl)
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+library(limma)
+library(edgeR)
+library(Seurat)
+```
+
+Input Seurat normalized object containing all samples with diagnosis based on braak + cerad
+```{r}
+setwd("/your directory")
+math<- readRDS("mathys2.rds")
+```
+
+Run DGE analysis separately for male and female, include ApoE as a variable
+```{r}
+my_data<- math@meta.data
+my_data<- my_data[!duplicated(math$Subject),]
+my_data2<- my_data[,c(12,5,6,7,19)]
+table(my_data2$Diagnosis, my_data2$Sex)
+write.csv(my_data, file="mathys_sexdiff_cohort.csv") 
+
+str(math@meta.data)
+
+#Create variable of interest, make sure assay is RNA, and design variables are factors
+math$diag_cell_sex<- paste0(math$Diagnosis,"_", math$Cell_type,"_",math$Sex)
+Idents(math) <- "diag_cell_sex"
+table(Idents(math))
+DefaultAssay(math)<- "RNA"
+class(math$ApoE)
+class(math$Sex)
+math$diag_cell_sex<- as.factor(math$diag_cell_sex)
+
+#Create design
+design<- model.matrix(~0 + diag_cell_sex + ApoE , data = math@meta.data) 
+colnames(design) <- gsub("diag_cell_sex", "", colnames(design))
+#colnames(design) <- gsub("ApoE", "", colnames(design))
+colnames(design)
+
+#Filter and normalize counts
+dge <-  as.matrix(GetAssayData(math, slot="counts")) 
+dge <- DGEList(counts= dge)
+keep <- filterByExpr(dge, design)
+summary(keep) #false 17586, true 137
+dge <- dge[keep,keep.lib.sizes=FALSE]
+dge <- calcNormFactors(dge, method = "TMMwsp")
+
+#Run Voom and make contrasts
+vm<- voom(dge, design, plot = TRUE)
+fit <- lmFit(vm, design)
+head(coef(fit))
+
+contrasts.matrix<-  makeContrasts(AstM= AD_Ast_Male - Control_Ast_Male,
+                                  AstF= AD_Ast_Female - Control_Ast_Female,
+                                  ExM =AD_Ex_Male - Control_Ex_Male,
+                                  ExF = AD_Ex_Female - Control_Ex_Female,
+                                  InM= AD_In_Male - Control_In_Male,
+                                  InF = AD_In_Female - Control_In_Female,
+                                  MicM= AD_Mic_Male - Control_Mic_Male,
+                                  MicF = AD_Mic_Female - Control_Mic_Female,
+                                  OliM= AD_Oli_Male - Control_Oli_Male,
+                                  OliF= AD_Oli_Female - Control_Oli_Female,
+                                  OpcM= AD_Opc_Male - Control_Opc_Male,
+                                  OpcF= AD_Opc_Female - Control_Opc_Female,
+                                  levels = colnames(design))
+fit <- contrasts.fit(fit, contrasts = contrasts.matrix) 
+fit <- eBayes(fit)
+
+#Run loop to get results 
+delist_key<- c("AstM",  "ExM", "InM", "MicM", "OliM" , "OpcM",
+               "AstF","ExF","InF", "MicF", "OliF", "OpcF" )
+
+library(stringr)
+markers2= NULL
+markers3= NULL
+for(key in delist_key){
+  key2<- str_sub(key,-1) #Sex
+  key1<- gsub(key2,"",key) #Cell_type
+  markers<- topTable(fit, coef= key, sort.by = "logFC", number = Inf, adjust.method = "BH") #number = 17775, 
+  markers$group<- key
+  markers$Sex<- key2
+  markers$cell_type<- key1
+  markers$gene<- rownames(markers)
+  markers$dir<- ifelse(markers$logFC < 0, "neg","pos")
+  colnames( markers)[c(1,4,5)] <- c("avg_logFC", "p_val", "p_val_adj")
+  markers2<- rbind(markers2, markers) #no thresholds
+  markers<- subset(markers, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+  markers3<- rbind(markers3, markers) 
+}
+
+unique(markers2$cell_type) #correct Microglia b/c "M" for male altered it
+markers2$cell_type<- ifelse(markers2$cell_type == "ic", "Mic", markers2$cell_type ) 
+table(markers3$group, markers3$dir)
+
+male.markersOG<- markers2[markers2$Sex == "M",]
+female.markersOG<- markers2[markers2$Sex != "M",]
+
+write.csv(male.markersOG, file="math_DEG_males.csv") 
+write.csv(female.markersOG, file="math_DEG_females.csv")  
+```

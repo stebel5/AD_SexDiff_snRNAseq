@@ -1,0 +1,447 @@
+---
+title: "Plots for Mathys et al Sex stratified DGE analysis results"
+author: "Stella Belonwu"
+date: "03/23/2021"
+output: html_document
+---
+Goal: Create plots for paper\
+*Figure 1: Overview of cohort sample definition and workflow for sex stratified cell type specific differential gene expression and functional enrichment.*\
+*Figure 2: Sex stratified cell type specific differential gene expression signatures in the prefrontal cortex.*\
+Figure 3: Sex stratified cell type specific differential gene expression signatures in the entorhinal cortex.\
+Figure 4: Sex stratified cell type specific differential gene expression signatures across brain regions.\
+Figure 5: Enriched pathway networks in male and female cells.\
+
+*Supplementary Figure 1: Dimensionality reduction of prefrontal and entorhinal cortices cohort cells by APOE genotype, batch, cell type, diagnosis, and sex.*\
+*Supplementary Figure 2: Shared and unique male and female disease signatures across and within cell types in the prefrontal and entorhinal cortices.*\
+Supplementary Figure 3: Enriched disease pathway networks male and female astrocytes\
+Supplementary Figure 4: Enriched disease pathway networks in male and female oligodendrocytes and OPCs.\
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Input Packages\
+```{r}
+library(pheatmap)
+library(Seurat)
+library(dittoSeq)
+library(ggplot2)
+library(dplyr)
+library(Hmisc)
+library(grid)
+library(UpSetR)
+```
+
+Input Seurat object\
+```{r}
+setwd("/your directory")
+math<- readRDS("mathys2.rds")
+```
+ 
+Input DGE data\
+```{r}
+setwd("/your directory")
+demale.markersOG<-  read.csv("math_DEG_males.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+defemale.markersOG<-  read.csv("math_DEG_females.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE) 
+demale.markersOG$X<- NULL
+defemale.markersOG$X<- NULL
+defemale.markersOG$Sex<- "F"
+```
+
+Supplementary Figure 1:UMAP\
+For legend: legend.text = element_text( size = 20), legend.title = element_text( size = 20)\
+```{r}
+class(math$ApoE)
+math$ApoE<-as.character(math$ApoE)
+table(math$ApoE)
+table(math$ApoE,math$Sex )
+math$ApoE<- ifelse(math$ApoE == "23", "2/3", math$ApoE)
+math$ApoE<- ifelse(math$ApoE == "33", "3/3", math$ApoE)
+math$ApoE<- ifelse(math$ApoE == "34", "3/4", math$ApoE)
+math$ApoE<- ifelse(math$ApoE == "44", "4/4", math$ApoE)
+
+#Diagnosis
+dittoDimPlot( object = math, "Diagnosis",reduction = "umap",    legend.title = "Diagnosis",main = "Diagnosis", color.panel = c("#007756", "#D5C711")) + theme(axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_blank(), legend.position="none", axis.text.x = element_blank(), axis.ticks.x = element_blank(),  axis.text.y = element_blank(), axis.ticks.y = element_blank(), panel.background = element_rect(colour = "black", size=1.5))
+
+#Sex
+dittoDimPlot( object = math, "Sex", reduction = "umap",  color.panel = c("#A04700", "#005685" ), legend.title = "Sex",main = "Sex" ) + theme(axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_blank(), legend.position="none", axis.text.x = element_blank(), axis.ticks.x = element_blank(),  axis.text.y = element_blank(), axis.ticks.y = element_blank(), panel.background = element_rect(colour = "black", size=1.5))
+
+#ApoE
+dittoDimPlot( object = math,  "ApoE", reduction = "umap",   color.panel =c("#2CFFC6","#AD7700" ,"#1C91D4", "#9AD2F2" ), legend.title = "APOE", main = "APOE")+ theme(axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_blank(), legend.position="none", axis.text.x = element_blank(), axis.ticks.x = element_blank(),  axis.text.y = element_blank(), axis.ticks.y = element_blank(), panel.background = element_rect(colour = "black", size=1.5))
+
+#Batch
+dittoDimPlot( object = math,  "Batch", reduction = "umap",  color.panel = c("#B14380", "#4D4D4D" ,"#FFBE2D" ,"#80C7EF", "#00F6B3" ,"#F4EB71", "#06A5FF", "#FF8320" ,"#D99BBD" ,"#8C8C8C", "#FFCB57" ,"#9AD2F2"), legend.title = "Batch",  main = "Batch") + theme(axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_blank(), legend.position="none", axis.text.x = element_blank(), axis.ticks.x = element_blank(),  axis.text.y = element_blank(), axis.ticks.y = element_blank(), panel.background = element_rect(colour = "black", size=1.5))
+
+#Patient
+dittoDimPlot( object = math,  "Subject", reduction = "umap",  legend.title = "Subject",  main = "Subject") + theme(axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_blank(), legend.position="none", axis.text.x = element_blank(), axis.ticks.x = element_blank(),  axis.text.y = element_blank(), axis.ticks.y = element_blank(), panel.background = element_rect(colour = "black", size=1.5))
+
+#Celltype
+dittoDimPlot( object = math,  "Cell_type", reduction = "umap",  main=   "Cell type", color.panel = c("#E69F00","#F0E442" ,"#CC79A7","#009E73",  "#D55E00",  "#0072B2"), legend.title = "Cell type") + theme(axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_blank(), legend.position="none", axis.text.x = element_blank(), axis.ticks.x = element_blank(),  axis.text.y = element_blank(), axis.ticks.y = element_blank(), panel.background = element_rect(colour = "black", size=1.5))
+
+dittoDimPlot( object = math,  "Cell_type", reduction = "umap", do.label= TRUE,labels.size = 14, main= "Cell type",color.panel = c("#E69F00","#F0E442" ,"#CC79A7","#009E73",  "#D55E00",  "#0072B2")) + theme(axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_blank(), legend.position="none", axis.text.x = element_blank(), axis.ticks.x = element_blank(),  axis.text.y = element_blank(), axis.ticks.y = element_blank(), panel.background = element_rect(colour = "black", size=1.5))
+```
+
+Figure 2d: Pairwise DEG Plots\
+Change colors to match rest of plots: Sex: male:"#005685", female: "#A04700"\
+Show text for only significant genes\
+```{r}
+#Create data frame for each cell type/sex group
+for (i in unique(demale.markersOG$cell_type)){
+  for (j in c("male","female")){
+    k<- ifelse(j == "male", "M", "F")
+    makedf<- print(paste0(i,j,'.markers<-de',j,'.markersOG[de',j,'.markersOG$group == "',i,k,'",]'), sep='', quote=FALSE)
+  show(eval(expr = parse(text =   makedf)))
+  }
+}
+
+colnames(demale.markersOG)
+#select gene(1), p_val_adj (5), and avg_logF C10) 
+#Note these are unfiltered DE tables, so it includes insignificant genes and low thresholds
+for (i in unique(demale.markersOG$cell_type)){
+    line1<- print(paste0(i,'_markers<- dplyr::full_join(',i,'male.markers[,c(1,5,10)],',i,'female.markers[,c(1,5,10)], by ="gene")'), sep='',quote = FALSE)
+    line2<-print(paste0(i,'_markers$dir<- ifelse(',i,'_markers$avg_logFC.x >0 &',i,'_markers$avg_logFC.y >0, "same","opp")'), sep='',quote = FALSE)
+    line3<-print(paste0(i,'_markers$dir<- ifelse(',i,'_markers$avg_logFC.x <0 &',i,'_markers$avg_logFC.y <0, "same",',i,'_markers$dir)'), sep='',quote = FALSE)
+    line4<-print(paste0(i,'_markers<- na.omit(',i,'_markers)'), sep='',quote = FALSE)
+    line5<-print(paste0(i,'_markers$sig<- ifelse(',i,'_markers$p_val_adj.x <0.05,"<0.05 in Males","Not Significant")'), sep='',quote = FALSE)
+    line6<-print(paste0(i,'_markers$sig<- ifelse(',i,'_markers$p_val_adj.y <0.05,"<0.05 in Females",',i,'_markers$sig)'), sep='',quote = FALSE)
+    line7<- print(paste0(i,'_markers$sig<- ifelse(',i,'_markers$p_val_adj.x <0.05 & ',i,'_markers$p_val_adj.y <0.05 &',i,'_markers$dir == "same", "<0.05 in Both & Same Direction", ',i,'_markers$sig)'), sep='',quote = FALSE)
+    line8<- print(paste0(i,'_markers$sig<- ifelse(',i,'_markers$p_val_adj.x <0.05 & ',i,'_markers$p_val_adj.y <0.05 &',i,'_markers$dir == "opp", "<0.05 in Both & Opp Direction", ',i,'_markers$sig)'), sep='',quote = FALSE)
+    #line9<-print(paste0('table(',i,'_markers$sig)'), sep='',quote = FALSE)
+    line9<- print(paste0(i,'_markers$sig<- as.factor(',i,'_markers$sig)'), sep='',quote = FALSE)
+    line10<-print(paste0(i,'_markers$sigcols<- ifelse(',i,'_markers$sig == "<0.05 in Males" , "#005685", "#636363")'), sep='',quote = FALSE)
+    line11<-print(paste0(i,'_markers$sigcols<- ifelse(',i,'_markers$sig == "<0.05 in Females" , "#A04700",', i,'_markers$sigcols)'), sep='',quote = FALSE)
+    line12<-print(paste0(i,'_markers$sigcols<- ifelse(',i,'_markers$sig == "<0.05 in Both & Opp Direction" ,"#CC79A7",', i,'_markers$sigcols)'), sep='',quote = FALSE)
+    line13<-print(paste0(i,'_markers$sigcols<- ifelse(',i,'_markers$sig == "<0.05 in Both & Same Direction" , "#F0E442",', i,'_markers$sigcols)'), sep='',quote = FALSE)
+    line14<-print(paste0(i,'_markers$sigcols<- as.factor(',i,'_markers$sigcols)'), sep='',quote = FALSE)
+    line15<-print(paste0(i,'_markers$sig2<- ifelse(',i,'_markers$sig == "Not Significant" , "0", "1")'), sep='',quote = FALSE)
+    show(eval(expr = parse(text = c(line1,line2,line3,line4, line5, line6,line7, line8, line9, line10,line11, line12, line13, line14, line15))))
+}
+
+rm(line1,line2,line3,line4, line5, line6,line7, line8, line9, line10,line11, line12, line13, line14, line15)
+marktype<- c("Ast",  "Ex", "In", "Mic", "Oli" , "Opc" )
+
+#explore distribution of shared and distinct DEGs
+for (i in marktype){
+  p1= print(paste0('table(',i,'_markers$sig)'),sep='', quote=FALSE)
+  show(eval(expr = parse(text = c(p1))))
+}
+
+#explore range of log fold changes
+for (i in marktype){
+  p1= print(paste0('hist(',i,'_markers$avg_logFC.x)'),sep='', quote=FALSE)
+  p2= print(paste0('hist(',i,'_markers$avg_logFC.y)'),sep='', quote=FALSE)
+  show(eval(expr = parse(text = c(p1,p2))))
+}
+
+#assign colors
+my_col <- as.character(Ast_markers$sigcols)
+names(my_col) <- as.character(Ast_markers$sig)
+
+#For legend:
+#legend.text = element_text( size = 20), legend.title = element_text( size = 20)
+#+ guides(color = guide_legend(override.aes = list(size=5)),text = guide_legend(label = FALSE))
+#Plot genes that are significant, and have a log2FC of > 0.25 in either sex
+
+ggplot(Ast_markers, aes(x= avg_logFC.x, y=avg_logFC.y, color= sig)) + geom_point(size=0.5) + labs(title="Astrocytes", color="Adjusted p-value (BH)") + xlab("Males Log2 FC") + ylab("Females Log2 FC") + theme_bw() + scale_y_continuous(breaks = seq(-1,1, 0.25)) + scale_x_continuous(breaks = seq(-0.5,0.5, 0.25)) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)+  scale_color_manual(values=my_col) + geom_text(data=subset(Ast_markers, sig2 == "1" & abs(avg_logFC.x) > 0.25 |sig2 == "1" & abs(avg_logFC.y) > 0.25),  size=7, check_overlap= TRUE, aes(label = gene)) + theme(legend.position="none", axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20)) + expand_limits(x= -0.5) + expand_limits(x= 0.5) + geom_vline(xintercept=c(-0.25,0.25), linetype="dotted") + geom_hline(yintercept=c(-0.25,0.25), linetype="dotted")
+
+ggplot(Mic_markers, aes(x= avg_logFC.x, y=avg_logFC.y, color= sig)) + geom_point(size=0.5) + labs(title="Microglia", color="Adjusted p-value (BH)") + xlab("Males Log2 FC") + ylab("Females Log2 FC") + theme_bw() + scale_y_continuous(breaks = seq(-1,1, 0.25)) + scale_x_continuous(breaks = seq(-0.5,0.75, 0.25)) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)+  scale_color_manual(values=my_col) + geom_text(data=subset(Mic_markers, sig2 == "1" & abs(avg_logFC.x) > 0.25 |sig2 == "1" & abs(avg_logFC.y) > 0.25),  size=7, check_overlap= TRUE, aes(label = gene)) + theme(legend.position="none", axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20)) + expand_limits(x= -0.5) + expand_limits(x= 0.75) + geom_vline(xintercept=c(-0.25,0.25), linetype="dotted") + geom_hline(yintercept=c(-0.25,0.25), linetype="dotted")
+
+ggplot(Ex_markers, aes(x= avg_logFC.x, y=avg_logFC.y, color= sig)) + geom_point(size=0.5) + labs(title="Excitatory Neurons", color="Adjusted p-value (BH)") + xlab("Males Log2 FC") + ylab("Females Log2 FC") + theme_bw() + scale_y_continuous(breaks = seq(-1,1, 0.25)) + scale_x_continuous(breaks = seq(-0.5,0.75, 0.25)) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)+  scale_color_manual(values=my_col) + geom_text(data=subset(Ex_markers, sig2 == "1" & abs(avg_logFC.x) > 0.25 |sig2 == "1" & abs(avg_logFC.y) > 0.25),  size=7, check_overlap= TRUE, aes(label = gene)) + theme(legend.position="none", axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20)) + expand_limits(x= -0.5) + expand_limits(x= 0.75) + geom_vline(xintercept=c(-0.25,0.25), linetype="dotted") + geom_hline(yintercept=c(-0.25,0.25), linetype="dotted")
+ 
+ggplot(In_markers, aes(x= avg_logFC.x, y=avg_logFC.y, color= sig)) + geom_point(size=0.5) + labs(title="Inhibitory Neurons", color="Adjusted p-value (BH)") + xlab("Males Log2 FC") + ylab("Females Log2 FC") + theme_bw() + scale_y_continuous(breaks = seq(-1,1, 0.25)) + scale_x_continuous(breaks = seq(-0.5,0.5, 0.25)) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)+  scale_color_manual(values=my_col) + geom_text(data=subset(In_markers,sig2 == "1" & abs(avg_logFC.x) > 0.25 |sig2 == "1" & abs(avg_logFC.y) > 0.25),  size=7, check_overlap= TRUE, aes(label = gene)) + theme(legend.position="none", axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20)) + expand_limits(x= -0.5) + expand_limits(x= 0.5) + geom_vline(xintercept=c(-0.25,0.25), linetype="dotted") + geom_hline(yintercept=c(-0.25,0.25), linetype="dotted")
+ 
+ggplot(Oli_markers, aes(x= avg_logFC.x, y=avg_logFC.y, color= sig)) + geom_point(size=0.5) + labs(title="Oligodendrocytes", color="Adjusted p-value (BH)") + xlab("Males Log2 FC") + ylab("Females Log2 FC") + theme_bw() + scale_y_continuous(breaks = seq(-1,1, 0.25)) + scale_x_continuous(breaks = seq(-0.5,0.5, 0.25)) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)+  scale_color_manual(values=my_col) + geom_text(data=subset(Oli_markers, sig2 == "1" & abs(avg_logFC.x) > 0.25 |sig2 == "1" & abs(avg_logFC.y) > 0.25),  size=7, check_overlap= TRUE, aes(label = gene)) + theme(legend.position="none", axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20)) + expand_limits(x= -0.5) + expand_limits(x= 0.5) + geom_vline(xintercept=c(-0.25,0.25), linetype="dotted") + geom_hline(yintercept=c(-0.25,0.25), linetype="dotted")
+
+ggplot(Opc_markers, aes(x= avg_logFC.x, y=avg_logFC.y, color= sig)) + geom_point(size=0.5) + labs(title="Oligodendrocyte progenitor cells", color="Adjusted p-value (BH)") + xlab("Males Log2 FC") + ylab("Females Log2 FC") + theme_bw() + scale_y_continuous(breaks = seq(-1,1, 0.25)) + scale_x_continuous(breaks = seq(-0.5,0.5, 0.25)) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)+  scale_color_manual(values=my_col) + geom_text(data=subset(Opc_markers, sig2 == "1" & abs(avg_logFC.x) > 0.25 |sig2 == "1" & abs(avg_logFC.y) > 0.25),  size=7, check_overlap= TRUE, aes(label = gene)) + theme(legend.position="none", axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20)) + expand_limits(x= -0.5) + expand_limits(x= 0.5) + geom_vline(xintercept=c(-0.25,0.25), linetype="dotted") + geom_hline(yintercept=c(-0.25,0.25), linetype="dotted")
+
+rm(Astmale.markers,Micmale.markers,Exmale.markers,Inmale.markers,Olimale.markers,Opcmale.markers,Astfemale.markers,Micfemale.markers,Exfemale.markers,Infemale.markers,Olifemale.markers,Opcfemale.markers)
+```
+
+Figure 2a: Within males across cell types\
+```{r}
+demale.markers<-  subset(demale.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25) #51
+defemale.markers<-  subset(defemale.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25) #118
+
+#Male
+table(demale.markers$cell_type) 
+table(demale.markers$cell_type, demale.markers$dir) #no mic down
+
+demale.list1<-list(Mic= demale.markers$gene[demale.markers$cell_type == "Mic"],
+                 Ast= demale.markers$gene[demale.markers$cell_type == "Ast"],
+                 Ex= demale.markers$gene[demale.markers$cell_type == "Ex"], 
+                 In= demale.markers$gene[demale.markers$cell_type == "In"],
+                 Oli= demale.markers$gene[demale.markers$cell_type == "Oli"], 
+                 Opc= demale.markers$gene[demale.markers$cell_type == "Opc"]) 
+
+demale.list2<-list(Mic_up = demale.markers$gene[demale.markers$cell_type == "Mic" & demale.markers$dir == "pos"], 
+                Ast_up = demale.markers$gene[demale.markers$cell_type == "Ast" & demale.markers$dir == "pos"], 
+                Ex_up = demale.markers$gene[demale.markers$cell_type == "Ex" & demale.markers$dir == "pos"], 
+                In_up = demale.markers$gene[demale.markers$cell_type == "In" & demale.markers$dir == "pos"],
+                Oli_up = demale.markers$gene[demale.markers$cell_type == "Oli" & demale.markers$dir == "pos"], 
+                Opc_up = demale.markers$gene[demale.markers$cell_type == "Opc" & demale.markers$dir == "pos"])
+ 
+demale.list3<-list(Mic_down =   demale.markers$gene[demale.markers$cell_type == "Mic" & demale.markers$dir != "pos"], 
+               Ast_down =  demale.markers$gene[demale.markers$cell_type == "Ast" & demale.markers$dir != "pos"], 
+               Ex_down = demale.markers$gene[demale.markers$cell_type == "Ex" & demale.markers$dir != "pos"], 
+               In_down = demale.markers$gene[demale.markers$cell_type == "In" & demale.markers$dir != "pos"],
+               Oli_down =  demale.markers$gene[demale.markers$cell_type == "Oli" & demale.markers$dir != "pos"], 
+               Opc_down =  demale.markers$gene[demale.markers$cell_type == "Opc" & demale.markers$dir != "pos"])
+
+#c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars).
+upset(fromList(demale.list1), sets = c("Opc","Oli", "Mic","In","Ex" ,"Ast" ), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Number of DEGs", nsets=6,  text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25)) 
+grid.text("Shared male DEGs",x = 0.69, y=0.967, gp=gpar(fontsize=20))
+ 
+upset(fromList(demale.list2), sets = c("Opc_up","Oli_up", "Mic_up", "In_up", "Ex_up", "Ast_up" ), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets=6, sets.x.label = "Number of DEGs", text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25)) 
+grid.text("Shared male DEGs",x = 0.69, y=0.967, gp=gpar(fontsize=20))
+ 
+upset(fromList(demale.list3), sets = c("Opc_down","Oli_down", "In_down", "Ex_down","Ast_down" ), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets=6, sets.x.label = "Number of DEGs",  text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Shared male DEGs",x = 0.69, y=0.967, gp=gpar(fontsize=20))
+```
+
+Figure 2a: Within females across cell types\
+```{r}
+table(defemale.markers$cell_type)  
+table(defemale.markers$cell_type, defemale.markers$dir)  
+
+#Any overlaps in DE across cell types? Upset plot
+defemale.list1<-list(Mic = defemale.markers$gene[defemale.markers$cell_type == "Mic"],
+                 Ast= defemale.markers$gene[defemale.markers$cell_type == "Ast"],
+                 Ex = defemale.markers$gene[defemale.markers$cell_type == "Ex"],
+                 In = defemale.markers$gene[defemale.markers$cell_type == "In"],
+                 Oli = defemale.markers$gene[defemale.markers$cell_type == "Oli"],
+                 Opc = defemale.markers$gene[defemale.markers$cell_type == "Opc"]) 
+
+
+defemale.list2<-list(Mic_up =  defemale.markers$gene[defemale.markers$cell_type == "Mic" & defemale.markers$dir == "pos"], 
+                Ast_up =  defemale.markers$gene[defemale.markers$cell_type == "Ast" & defemale.markers$dir == "pos"], 
+                Ex_up = defemale.markers$gene[defemale.markers$cell_type == "Ex" & defemale.markers$dir == "pos"], 
+                In_up = defemale.markers$gene[defemale.markers$cell_type == "In" & defemale.markers$dir == "pos"],
+                 Oli_up = defemale.markers$gene[defemale.markers$cell_type == "Oli" & defemale.markers$dir == "pos"], 
+                 Opc_up = defemale.markers$gene[defemale.markers$cell_type == "Opc" & defemale.markers$dir == "pos"])
+             
+
+defemale.list3<-list( Mic_down = defemale.markers$gene[defemale.markers$cell_type == "Mic" & defemale.markers$dir != "pos"], 
+                Ast_down = defemale.markers$gene[defemale.markers$cell_type == "Ast" & defemale.markers$dir != "pos"], 
+               Ex_down = defemale.markers$gene[defemale.markers$cell_type == "Ex" & defemale.markers$dir != "pos"], 
+               In_down = defemale.markers$gene[defemale.markers$cell_type == "In" & defemale.markers$dir != "pos"],
+                Oli_down = defemale.markers$gene[defemale.markers$cell_type == "Oli" & defemale.markers$dir != "pos"], 
+                Opc_down = defemale.markers$gene[defemale.markers$cell_type == "Opc" & defemale.markers$dir != "pos"])
+                
+#c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars)
+upset(fromList(defemale.list1), sets = c("Opc","Oli", "Mic","In","Ex" ,"Ast" ), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets=6,sets.x.label = "Number of DEGs", text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Shared female DEGs",x = 0.68, y=0.967, gp=gpar(fontsize=20))
+
+upset(fromList(defemale.list2), sets = c("Opc_up","Oli_up", "Mic_up", "In_up", "Ex_up", "Ast_up" ), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets=6, sets.x.label = "Number of DEGs",   text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Shared female DEGs",x = 0.68, y=0.967, gp=gpar(fontsize=20))
+
+upset(fromList(defemale.list3), sets = c("Opc_down","Oli_down", "Mic_down","In_down", "Ex_down","Ast_down" ), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections",nsets=6, sets.x.label = "Number of DEGs",   text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Shared female DEGs",x = 0.68, y=0.97, gp=gpar(fontsize=20))
+```
+
+Supplementary Figure 2: Between male, and female, within cell types\
+```{r}
+#c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars).
+#Ast
+ast.de.list<- list( Ast_male = demale.markers$gene[demale.markers$cell_type == "Ast"],
+                   Ast_female = defemale.markers$gene[defemale.markers$cell_type == "Ast"] )
+upset(fromList(ast.de.list), sets = c("Ast_male","Ast_female"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Number of DEGs", text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Astrocytes",x = 0.67, y=0.98, gp=gpar(fontsize=20))
+
+#Mic
+mic.de.list<- list( Mic_male = demale.markers$gene[demale.markers$cell_type == "Mic"],
+                    Mic_female = defemale.markers$gene[defemale.markers$cell_type == "Mic"] )
+upset(fromList(mic.de.list), sets = c("Mic_male","Mic_female"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs",  text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Microglia",x = 0.67, y=0.98, gp=gpar(fontsize=20))
+
+#Ex-Neu
+exneu.de.list<- list( Ex_male = demale.markers$gene[demale.markers$cell_type == "Ex"],
+                      Ex_female = defemale.markers$gene[defemale.markers$cell_type == "Ex"] )
+upset(fromList(exneu.de.list),sets = c("Ex_male","Ex_female"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Number of DEGs", text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Excitatory Neurons",x = 0.67, y=0.98, gp=gpar(fontsize=20))
+
+# In-Neu there are no overlaps b/c only one has DEGs
+# inneu.de.list<- list( In_male = demale.markers$gene[demale.markers$cell_type == "In"],
+#                        In_female = defemale.markers$gene[defemale.markers$cell_type == "In"] )
+# upset(fromList(inneu.de.list), order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Set Size", text.scale = c(2, 2, 1.75, 2, 2, 2))
+
+
+#Oli there are no overlaps  
+oli.de.list<- list( Oli_male = demale.markers$gene[demale.markers$cell_type == "Oli"],
+                  Oli_female = defemale.markers$gene[defemale.markers$cell_type == "Oli"] )
+upset(fromList(oli.de.list), sets = c("Oli_male","Oli_female"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Set Size", text.scale = c(2.25, 2.25, 2.25, 2.,2.25, 2.25))
+grid.text("Oligodendrocytes",x = 0.71, y=0.98, gp=gpar(fontsize=18))
+
+
+#Opc
+ opc.de.list<- list( Opc_male = demale.markers$gene[demale.markers$cell_type == "Opc"],
+                     Opc_female = defemale.markers$gene[defemale.markers$cell_type == "Opc"] )
+ upset(fromList(opc.de.list), sets = c("Opc_male","Opc_female"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Number of DEGs",  text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Oligodendrocyte progenitor cells",x = 0.71, y=0.98, gp=gpar(fontsize=18))
+
+dev.off()
+```
+
+Supplementary Figure 2: Between male, and female, within cell types up/down\
+```{r}
+#c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars).
+#Ast
+ast.de.list<- list( Ast_male_up = demale.markers$gene[demale.markers$cell_type == "Ast"& demale.markers$dir == "pos"],
+                    Ast_female_up = defemale.markers$gene[defemale.markers$cell_type == "Ast"& defemale.markers$dir == "pos"],
+                    Ast_male_down = demale.markers$gene[demale.markers$cell_type == "Ast"& demale.markers$dir != "pos"],
+                    Ast_female_down = defemale.markers$gene[defemale.markers$cell_type == "Ast"& defemale.markers$dir != "pos"])
+upset(fromList(ast.de.list),  sets = c("Ast_male_down", "Ast_male_up","Ast_female_down","Ast_female_up"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Number of DEGs", text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Astrocytes",x = 0.72, y=0.98, gp=gpar(fontsize=20))
+
+#Mic
+mic.de.list<- list( Mic_male_up = demale.markers$gene[demale.markers$cell_type == "Mic"& demale.markers$dir == "pos"],
+                    Mic_female_up = defemale.markers$gene[defemale.markers$cell_type == "Mic"& defemale.markers$dir == "pos"], 
+                    Mic_male_down = demale.markers$gene[demale.markers$cell_type == "Mic"& demale.markers$dir != "pos"],
+                    Mic_female_down = defemale.markers$gene[defemale.markers$cell_type == "Mic"& defemale.markers$dir != "pos"])
+upset(fromList(mic.de.list), sets = c("Mic_male_down", "Mic_male_up","Mic_female_down","Mic_female_up"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Microglia",x = 0.72, y=0.98, gp=gpar(fontsize=20))
+
+
+#Ex-Neu
+exneu.de.list<- list( Ex_male_up = demale.markers$gene[demale.markers$cell_type == "Ex"& demale.markers$dir == "pos"],
+                      Ex_female_up = defemale.markers$gene[defemale.markers$cell_type == "Ex"& defemale.markers$dir == "pos"],
+                      Ex_male_down = demale.markers$gene[demale.markers$cell_type == "Ex"& demale.markers$dir != "pos"],
+                      Ex_female_down = defemale.markers$gene[defemale.markers$cell_type == "Ex"& defemale.markers$dir != "pos"] )
+upset(fromList(exneu.de.list), sets = c("Ex_male_down", "Ex_male_up","Ex_female_down","Ex_female_up"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections",sets.x.label = "Number of DEGs",text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Excitatory Neurons",x = 0.72, y=0.98, gp=gpar(fontsize=20))
+
+#In-Neu
+inneu.de.list<- list( In_male_up = demale.markers$gene[demale.markers$cell_type == "In"& demale.markers$dir == "pos"],
+                      In_female_up = defemale.markers$gene[defemale.markers$cell_type == "In"& defemale.markers$dir == "pos"],
+                      In_male_down = demale.markers$gene[demale.markers$cell_type == "In"& demale.markers$dir != "pos"],
+                      In_female_down = defemale.markers$gene[defemale.markers$cell_type == "In"& defemale.markers$dir != "pos"])
+upset(fromList(inneu.de.list), sets = c("In_male_down", "In_female_down","In_female_up"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Set Size", nsets=4, text.scale = c(2.25, 2.25, 2.25, 1.75,2.25, 2.25))
+grid.text("Inhibitory Neurons",x = 0.72, y=0.98, gp=gpar(fontsize=20))
+ 
+
+#Oli
+oli.de.list<- list( Oli_male_up = demale.markers$gene[demale.markers$cell_type == "Oli"& demale.markers$dir == "pos"],
+                    Oli_female_up = defemale.markers$gene[defemale.markers$cell_type == "Oli"& defemale.markers$dir == "pos"],
+                    Oli_male_down = demale.markers$gene[demale.markers$cell_type == "Oli"& demale.markers$dir != "pos"],
+                    Oli_female_down = defemale.markers$gene[defemale.markers$cell_type == "Oli"& defemale.markers$dir != "pos"])
+upset(fromList(oli.de.list), sets = c("Oli_male_down", "Oli_male_up","Oli_female_down","Oli_female_up"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label = "Set Size", text.scale = c(2.25, 2.25, 2.25, 2.25,2.25, 2.25))
+grid.text("Oligodendrocytes",x = 0.71, y=0.98, gp=gpar(fontsize=18))
+
+
+#Opc
+opc.de.list<- list( Opc_male_up = demale.markers$gene[demale.markers$cell_type == "Opc"& demale.markers$dir == "pos"],
+                    Opc_female_up = defemale.markers$gene[defemale.markers$cell_type == "Opc"& defemale.markers$dir == "pos"],
+                    Opc_male_down = demale.markers$gene[demale.markers$cell_type == "Opc"& demale.markers$dir != "pos"],
+                    Opc_female_down = defemale.markers$gene[defemale.markers$cell_type == "Opc"& defemale.markers$dir != "pos"])
+upset(fromList(opc.de.list), sets = c("Opc_male_down", "Opc_male_up","Opc_female_down","Opc_female_up"), keep.order = TRUE,  order.by = "freq",  mainbar.y.label = "Gene Intersections",  sets.x.label = "Number of DEGs", text.scale = c(2.25, 2.25, 2, 2.25, 2.25, 2.25))  
+grid.text("Oligodendrocyte progenitor cells",x = 0.76, y=0.98, gp=gpar(fontsize=17))
+
+dev.off()
+```
+
+Overlaps:\
+Get list of shared genes\
+```{r}
+male.markers<- subset(demale.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25) #51
+female.markers<- subset(defemale.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25) #118
+
+#Within males, count to determine the overlapping genes across cell types  
+length(unique(male.markers$gene)) #232
+genemale_count<-as.data.frame(table(male.markers$gene))  
+colnames(genemale_count)<- c("gene","genemale_count")
+male.markers2<- dplyr::inner_join(male.markers,genemale_count, by="gene") 
+table(male.markers2$genemale_count)
+ 
+#Within females, count to determine the overlapping genes across cell types
+length(unique(female.markers$gene)) #213
+genefemale_count<-as.data.frame(table(female.markers$gene)) 
+colnames(genefemale_count)<- c("gene","genefemale_count")
+female.markers2<- dplyr::inner_join(female.markers,genefemale_count, by="gene") 
+table(female.markers2$genefemale_count) 
+ 
+#Join males and females, group by celltype, then count to determine overlapping genes within cell types
+colnames(male.markers2)[12]<-"gene_count"
+colnames(female.markers2)[12]<- "gene_count"
+all.de.markers<- rbind(male.markers2, female.markers2) #985
+
+all.de.markers$cell_gene<- paste0(all.de.markers$cell_type,"-", all.de.markers$gene)
+gene_ct_count<-as.data.frame(table(all.de.markers$cell_gene))
+colnames(gene_ct_count)<- c("cell_gene", "gene_ct_count")
+all.de.markers<- dplyr::inner_join(all.de.markers,gene_ct_count, by="cell_gene") 
+```
+In summary,\
+gene_count = number of times a gene appears within sex group, across cell types-> CELL TYPE specific\
+gene_ct_count= number of times a gene appears within cell types, across sex> SEX specific\
+
+Figure 2b: Heatmap of genes in analysis
+ApoE:male apoe: "#AD7700", "#1C91D4","#9AD2F2", female apoe: "#AD7700","#9AD2F2"; Diagnosis: "#007756", "#D5C711"
+Cell types: "#E69F00", "#009E73","#F0E442" ,"#0072B2", "#D55E00"; Sex: "#005685" ,"#A04700" (f, m)
+Change sex colors: new "#005685" ,"#A04700" (m, f)
+```{r}
+male.markers<- subset(demale.markersOG, p_val_adj < 0.05)
+female.markers<- subset(defemale.markersOG, p_val_adj < 0.05)
+math_markers<- rbind(male.markers,female.markers)
+
+#Variable to graph by
+colnames(math_markers)
+math_markers<- math_markers[,c(1,10,7)]
+for(ct in unique(math_markers$group)){
+ new_col<- print(paste0('math_markers$',ct,'<- ifelse(math_markers$group == "',ct,'",math_markers$avg_logFC, 0)'),sep='',quote = FALSE)  
+ show(eval(expr = parse(text = new_col)))
+}
+#Remove duplicates: if repeats add colsums of all repeated rows then remove duplicates
+math_markers <- math_markers %>% group_by(gene) %>% mutate(count = n())
+length(which(math_markers$count > 1)) #709
+which(math_markers$gene == "LINGO1")  
+
+math_markers<- math_markers %>%
+   arrange(gene)
+which(math_markers$gene ==  "LINGO1")  
+
+math_markers<- math_markers %>%                  # Specify data frame
+  group_by(gene) %>%                             # Specify group indicator
+  summarise_at(vars(colnames(math_markers[,4:15])),  # Specify column
+               list(name = sum))                        # Specify function
+
+class(math_markers) #tibble
+math_markers<- as.data.frame(math_markers)
+colnames(math_markers)[2:13]<-gsub("_name","",colnames(math_markers[2:13])) 
+
+rownames(math_markers)<- math_markers$gene
+math_markers$gene<- NULL
+colnames(math_markers)
+math_markers<- math_markers[,c(1,7,2,8,3,9,4,10,5,11,6,12)]
+
+range(math_markers) #  -0.4229495  1.0581907
+ 
+anno <- data.frame( Celltype=  factor(c("AstM", "AstF" , "ExM" ,"ExF", "InM" ,"InF","MicM", "MicF" , "OliM" ,"OliF" , "OpcM" , "OpcF")))
+rownames(anno)<- anno$Celltype
+anno$Sex<- str_sub(anno$Celltype, -1)
+anno$Celltype<- str_sub(anno$Celltype, 1,3)
+anno$Celltype<- gsub("ExM", "Ex",anno$Celltype)
+anno$Celltype<- gsub("ExF", "Ex",anno$Celltype)
+anno$Celltype<- gsub("InM", "In",anno$Celltype)
+anno$Celltype<- gsub("InF", "In",anno$Celltype)
+
+annoc<- list(Sex = c("M"= "#005685", "F" = "#A04700"), Celltype=( c("Ast" = "#E69F00", "Ex"= "#F0E442" ,"In"= "#CC79A7" , "Mic" = "#009E73", "Oli"="#D55E00","Opc" ="#0072B2" )))
+
+rangem <- max(abs(math_markers));
+pheatmap(math_markers, angle_col= "90", angle_row= "45",fontsize_row = 12,fontsize_col= 12 , show_rownames = FALSE, show_colnames = FALSE, scale = "none" , fontsize= 12,annotation_col= anno,annotation_colors = annoc ,border_color = "lightgrey", color = colorRampPalette(c(dittoColors()[11], "white", dittoColors()[38]))(100), breaks = seq(-rangem, rangem, length.out = 100))
+
+breaksList = seq(-1, 1, by =0.25)
+pheatmap(math_markers, angle_col= "90", angle_row= "45",fontsize_row = 12,fontsize_col= 12 , show_rownames = FALSE, show_colnames = FALSE, scale = "none" , fontsize= 12,annotation_col= anno, annotation_colors = annoc, border_color = "lightgrey",color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdBu")))(length(breaksList)),  breaks = breaksList) 
+```
+
+Figure 2c: Violin plots
+```{r}
+math$diag_sex<- paste0(math$Diagnosis,"_",math$Sex)
+
+dittoPlot( math, "SPP1" , group.by = "diag_sex", split.by =  "Cell_type",max = 6.5, x.reorder = c(1,3,2,4), color.panel = c("#fdae6b" , "#9ebcda","#d95f0e","#2b8cbe"), main= "SPP1 Expression", split.ncol=6 )+ theme( axis.text=element_text(size=22), axis.title=element_text(size=22), plot.title = element_text(size=22),  strip.text = element_text(size = 22))  + theme(legend.position="none", axis.text.x = element_blank(), axis.title.x=element_blank(), axis.ticks.x = element_blank()) 
+
+dittoPlot( math, "NRXN1" , group.by = "diag_sex", split.by =  "Cell_type", max = 6, x.reorder = c(1,3,2,4), color.panel = c("#fdae6b" , "#9ebcda","#d95f0e","#2b8cbe"), main= "NRXN1 Expression", split.ncol=6 ) + theme( axis.text=element_text(size=22), axis.title=element_text(size=22), plot.title = element_text(size=22),  strip.text = element_text(size = 22))  + theme(legend.position="none", axis.text.x = element_blank(), axis.title.x=element_blank(), axis.ticks.x = element_blank()) 
+
+dittoPlot( math, "DHFR" , group.by = "diag_sex", split.by =  "Cell_type",max = 6, x.reorder = c(1,3,2,4), color.panel = c("#fdae6b" , "#9ebcda","#d95f0e","#2b8cbe"), main= "DHFR Expression", split.ncol=6 ) + theme( axis.text=element_text(size=22), axis.title=element_text(size=22), plot.title = element_text(size=22),  strip.text = element_text(size = 22))  + theme(legend.position="none", axis.text.x = element_blank(), axis.title.x=element_blank(), axis.ticks.x = element_blank()) 
+
+dittoPlot( math, "SGK1" , group.by = "diag_sex", split.by =  "Cell_type", max = 5, x.reorder = c(1,3,2,4), color.panel = c("#fdae6b" , "#9ebcda","#d95f0e","#2b8cbe"), main= "SGK1 Expression", split.ncol=6 ) + theme( axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20),  strip.text = element_text(size = 20))  + theme(legend.position="none", axis.text.x = element_blank(), axis.title.x=element_blank(), axis.ticks.x = element_blank()) 
+
+dittoPlot( math, "ERBB2IP" , group.by = "diag_sex", split.by =  "Cell_type", max = 5, x.reorder = c(1,3,2,4), color.panel = c("#fdae6b" , "#9ebcda","#d95f0e","#2b8cbe"), main= "ERBB2IP Expression", split.ncol=6 ) + theme( axis.text=element_text(size=20), axis.title=element_text(size=20), plot.title = element_text(size=20),  strip.text = element_text(size = 20))  + theme(legend.position="none", axis.text.x = element_blank(), axis.title.x=element_blank(), axis.ticks.x = element_blank()) 
+```
